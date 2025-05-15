@@ -96,11 +96,12 @@ namespace s3d
 	/// @remark Web 版においてHTTPSを使用する場合は Wss を使用してください。
 	enum class ConnectionProtocol : uint8
 	{
-		Default = 0,
 # if not SIV3D_PLATFORM(WEB)
+		Default = 0,
 		UDP = 0,
 		TCP = 1,
 # else
+		Default = 1,
 		Ws = 0,
 		Wss = 1,
 # endif
