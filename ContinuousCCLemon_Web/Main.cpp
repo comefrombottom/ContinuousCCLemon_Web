@@ -154,7 +154,7 @@ public:
 	template <class Archive>
 	void SIV3D_SERIALIZE(Archive& archive)
 	{
-		archive(players, gameState, wonPlayer);
+		archive(players, gameState, wonPlayer, maxHp, maxChargePoint);
 	}
 };
 
@@ -461,7 +461,7 @@ void Main()
 
 				}
 			}
-			if (not client.shareGameData or (client.shareGameData and client.shareGameData->gameState == GameState::Playing)) {
+			if (not client.shareGameData or (client.shareGameData and client.shareGameData->gameState != GameState::Playing)) {
 				if (SimpleGUI::Button(U"LeaveRoom", Vec2{ 20, 20 }, 160))
 				{
 					client.leaveRoom();
