@@ -340,7 +340,7 @@ public:
 	{
 		//プレイヤーのデータを送信する
 		if (not shareGameData) return;
-		sendEvent({ EventCode::players, ReceiverOption::All }, shareGameData->players);
+		sendEvent({ EventCode::players }, shareGameData->players);
 	}
 
 private:
@@ -449,10 +449,12 @@ void Main()
 	{
 		Touches.update();
 
+		/*
 		for (const auto& touch : Touches.getTouches())
 		{
 			Print << U"Touch ID: " << touch.id << U" Position: " << touch.pos;
 		}
+		*/
 
 		if (client.isActive())
 		{
