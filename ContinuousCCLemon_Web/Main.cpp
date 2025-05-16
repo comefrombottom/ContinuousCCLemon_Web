@@ -287,21 +287,25 @@ namespace EventCode {
 		changePlayerState,
 		finishGame,
 		players,
+		enemyName,
 	};
 }
+
+String VERSION = U"1.1";
 
 class MyClient : public Multiplayer_Photon
 {
 public:
 	MyClient()
 	{
-		init(std::string(SIV3D_OBFUSCATE(PHOTON_APP_ID)), U"1.0", Verbose::No);
+		init(std::string(SIV3D_OBFUSCATE(PHOTON_APP_ID)), VERSION, Verbose::No);
 
 		RegisterEventCallback(EventCode::sendShareGameData, &MyClient::eventReceived_sendShareGameData);
 		RegisterEventCallback(EventCode::startGame, &MyClient::eventReceived_startGame);
 		RegisterEventCallback(EventCode::changePlayerState, &MyClient::eventReceived_changePlayerState);
 		RegisterEventCallback(EventCode::finishGame, &MyClient::eventReceived_finishGame);
 		RegisterEventCallback(EventCode::players, &MyClient::eventReceived_players);
+		RegisterEventCallback(EventCode::enemyName, &MyClient::eventReceived_enemyName);
 
 	}
 
@@ -309,6 +313,7 @@ public:
 
 	int32 myPlayerIndex = 0;
 
+	String myPlayerName;
 	String enemyPlayerName;
 
 	Timer timer{ 3s };
@@ -387,12 +392,21 @@ private:
 		shareGameData->players = players;
 	}
 
+	void eventReceived_enemyName([[maybe_unused]] LocalPlayerID playerID, const String& name)
+	{
+		enemyPlayerName = name;
+	}
+
 
 	void joinRoomEventAction(const LocalPlayer& newPlayer, [[maybe_unused]] const Array<LocalPlayerID>& playerIDs, bool isSelf) override
 	{
 		//自分が部屋に入った時
 		if (isSelf) {
 			shareGameData.reset();
+			sendEvent({ EventCode::enemyName, ReceiverOption::Others }, myPlayerName);
+		}
+		else {
+			sendEvent({ EventCode::enemyName ,{newPlayer.localID} }, myPlayerName);
 		}
 
 		//ホストが入室した時、つまり部屋を新規作成した時
@@ -404,6 +418,14 @@ private:
 		if (not isSelf and isHost()) {
 			sendEvent({ EventCode::sendShareGameData, { newPlayer.localID } }, *shareGameData);
 		}
+	}
+
+	void leaveRoomEventAction(LocalPlayerID playerID, bool isInactive) {
+		enemyPlayerName = U"";
+	}
+
+	void leaveRoomReturn(int32 errorCode, const String& errorString) {
+		enemyPlayerName = U"";
 	}
 };
 
@@ -468,6 +490,8 @@ void Main()
 		{
 			Scene::Rect().draw(Palette::Steelblue);
 
+			font(U"v{}"_fmt(VERSION)).draw(20, Vec2{ 5, 5 });
+
 			font(U"Name:").drawAt(Scene::CenterF().moveBy(-150, -100), Palette::White);
 			SimpleGUI::TextBoxAt(playerNameEditState, Scene::CenterF().moveBy(0, -100));
 
@@ -486,7 +510,9 @@ void Main()
 			if (SimpleGUI::ButtonAt(U"ランダムマッチ", Scene::Center(), 300))
 			{
 				//適当な部屋に入るか、部屋がなければ新規作成する。空文字列を指定するとランダムな部屋名になる。
+				client.myPlayerName = playerNameEditState.text;
 				client.joinRandomOrCreateRoom(U"", RoomCreateOption().maxPlayers(2));
+
 			}
 
 
@@ -495,6 +521,7 @@ void Main()
 		if (client.isInRoom())
 		{
 			Scene::Rect().draw(Palette::Sienna);
+
 
 
 			if (client.shareGameData) {
@@ -588,6 +615,11 @@ void Main()
 					RectF hpBarRect2(hpBarRect.pos, hpBarRect.w * (player.hp / client.shareGameData->maxHp), hpBarRect.h);
 					hpBarRect2.draw(Palette::Lime);
 
+					//敵の名前を表示
+					font(client.enemyPlayerName).draw(20, Vec2{ 5,5 }, Palette::White);
+					//自分の名前を表示
+					font(client.myPlayerName).drawBase(20, Vec2{ 5, Scene::Height() - 5 }, Palette::White);
+
 
 					if (not client.timer.reachedZero()) {
 						Scene::Rect().draw(ColorF(0, 0.5));
@@ -611,6 +643,14 @@ void Main()
 				else if (client.shareGameData->gameState == GameState::Waiting)
 				{
 					//待機中
+
+					//相手の名前を表示
+					if (client.enemyPlayerName.isEmpty()) {
+					}
+					else {
+						font(U"vs. {}"_fmt(client.enemyPlayerName)).drawAt(Scene::CenterF().moveBy(0, -100), Palette::White);
+					}
+
 					if (client.isHost()) {
 						SimpleGUI::SliderAt(U"MaxHp:{}"_fmt(Floor(setting_maxHp / 10) * 10), setting_maxHp, 50, 1000, Scene::CenterF().moveBy(0, -300), 120, 240);
 						SimpleGUI::SliderAt(U"ChargeLimit:{}"_fmt(Floor(setting_maxChargePoint / 10) * 10), setting_maxChargePoint, 50, 1000, Scene::CenterF().moveBy(0, -200), 180, 240);
