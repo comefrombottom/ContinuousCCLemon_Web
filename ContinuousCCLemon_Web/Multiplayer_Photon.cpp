@@ -344,7 +344,7 @@ namespace s3d
 			m_context.debugLog(U"- [Multiplayer_Photon] isSelf [自分自身の参加？]: ", myself);
 			m_context.debugLog(U"- [Multiplayer_Photon] playerIDs [ルームの参加者一覧]: ", localPlayerIDs);
 
-			m_context.joinRoomEventAction(m_context.getLocalPlayer(), localPlayerIDs, myself);
+			m_context.joinRoomEventAction(m_context.getLocalPlayer(playerID), localPlayerIDs, myself);
 		}
 
 		void leaveRoomEventAction(LocalPlayerID playerID, bool isSuspended)

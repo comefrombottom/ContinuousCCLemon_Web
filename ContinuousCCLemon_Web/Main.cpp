@@ -14,6 +14,14 @@
 相手のhpを削り切るか、タメポイントを一定量集めると打てる必殺技で勝利
 */
 
+void drawLoadingSpinner(const Vec2 center = Scene::Center(), double t = Scene::Time()) {
+	//ローディング画面
+	int32 t_ = static_cast<int32>(Floor(fmod(t / 0.1, 8)));
+	for (int32 i : step(8)) {
+		Vec2 n = Circular(1, i * Math::TwoPi / 8);
+		Line(Scene::Center() + n * 10, Arg::direction(n * 10)).draw(LineStyle::RoundCap, 4, t_ == i ? ColorF(1, 0.9) : ColorF(1, 0.5));
+	}
+}
 
 enum class PlayerState : uint8
 {
@@ -166,7 +174,6 @@ namespace EventCode {
 		startGame,
 		changePlayerState,
 		finishGame,
-
 	};
 }
 
@@ -181,6 +188,7 @@ public:
 		RegisterEventCallback(EventCode::startGame, &MyClient::eventReceived_startGame);
 		RegisterEventCallback(EventCode::changePlayerState, &MyClient::eventReceived_changePlayerState);
 		RegisterEventCallback(EventCode::finishGame, &MyClient::eventReceived_finishGame);
+
 	}
 
 	Optional<ShareGameData> shareGameData;
@@ -346,6 +354,7 @@ void Main()
 		{
 			Scene::Rect().draw(Palette::Sienna);
 
+
 			if (client.shareGameData) {
 				if (client.shareGameData->gameState == GameState::Playing) {
 					//プレイ中
@@ -461,6 +470,10 @@ void Main()
 
 				}
 			}
+			else {
+				drawLoadingSpinner();
+			}
+
 			if (not client.shareGameData or (client.shareGameData and client.shareGameData->gameState != GameState::Playing)) {
 				if (SimpleGUI::Button(U"LeaveRoom", Vec2{ 20, 20 }, 160))
 				{
@@ -470,12 +483,7 @@ void Main()
 		}
 
 		if (not (client.isDisconnected() or client.isInLobby() or client.isInRoom())) {
-			//ローディング画面
-			int32 t = static_cast<int32>(Floor(fmod(Scene::Time() / 0.1, 8)));
-			for (int32 i : step(8)) {
-				Vec2 n = Circular(1, i * Math::TwoPi / 8);
-				Line(Scene::Center() + n * 10, Arg::direction(n * 10)).draw(LineStyle::RoundCap, 4, t == i ? ColorF(1, 0.9) : ColorF(1, 0.5));
-			}
+			drawLoadingSpinner();
 		}
 	}
 }

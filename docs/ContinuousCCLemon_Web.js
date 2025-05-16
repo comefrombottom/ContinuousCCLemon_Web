@@ -15329,6 +15329,16 @@ var ASM_CONSTS = {
           }
       }
 
+  function _siv3dPhotonGetRoomPlayerList(ptr, filter) {
+          const room = siv3dPhotonClient.myActor().getRoom();
+          const actors = siv3dPhotonClient.myRoomActors();
+          for (const actorNr in actors) {
+              if (filter >= 0 && filter != actorNr) continue;
+              const actor = actors[actorNr];
+              _siv3dPhotonGetRoomPlayerListCallback(ptr, actorNr, siv3dStringToNewUTF32(actor.name), siv3dStringToNewUTF32(actor.userId), siv3dPhotonClient.myRoomMasterActorNr() == actorNr, !actor.isSuspended);
+          }
+      }
+
   var siv3dPhotonClientState = {Disconnected:0,ConnectingToLobby:1,InLobby:2,JoiningRoom:3,InRoom:4,LeavingRoom:5,Disconnecting:6};
   
   function siv3dPhotonSetPingInterval(interval) {
@@ -17468,6 +17478,7 @@ var asmLibraryArg = {
   "siv3dPhotonDisconnect": _siv3dPhotonDisconnect,
   "siv3dPhotonGetCurrentRoom": _siv3dPhotonGetCurrentRoom,
   "siv3dPhotonGetRoomPlayerIDList": _siv3dPhotonGetRoomPlayerIDList,
+  "siv3dPhotonGetRoomPlayerList": _siv3dPhotonGetRoomPlayerList,
   "siv3dPhotonInitClient": _siv3dPhotonInitClient,
   "siv3dPhotonJoinRandomOrCreateRoom": _siv3dPhotonJoinRandomOrCreateRoom,
   "siv3dPhotonLeaveRoom": _siv3dPhotonLeaveRoom,
