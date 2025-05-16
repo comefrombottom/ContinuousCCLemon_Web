@@ -14,6 +14,118 @@
 相手のhpを削り切るか、タメポイントを一定量集めると打てる必殺技で勝利
 */
 
+
+struct TouchInfo {
+	int32 id;
+	Vec2 pos;
+};
+
+// タッチ情報を取得する関数
+Array<TouchInfo> GetMyTouches() {
+# if SIV3D_PLATFORM(WEB)
+	Array<TouchInfo> result = Array<TouchInfo>(EM_ASM_INT({ return window.myTouches.length; }));
+
+	EM_ASM({
+		const touches = window.myTouches;
+
+		for (let i = 0; i < touches.length; i++) {
+			const touch = touches[i];
+			const touchPtr = $0 + i * 24; // TouchInfo のサイズに応じて調整
+
+			const adjusted = siv3dAdjustPoint(touch.pageX, touch.pageY);
+
+			setValue(touchPtr, touch.identifier, 'i32');
+			setValue(touchPtr + 8, adjusted.x, 'double');
+			setValue(touchPtr + 16, adjusted.y, 'double');
+		}
+		}, result.data());
+
+	for (auto& touch : result)
+	{
+		touch.pos = Scene::ClientToScene(touch.pos);
+	}
+
+	return result;
+# else
+	return Array<TouchInfo>();
+# endif
+}
+
+class TouchesType
+{
+private:
+	Array<TouchInfo> m_touches;
+	Array<TouchInfo> m_preTouches;
+public:
+
+	void update()
+	{
+		m_preTouches = m_touches;
+		m_touches = GetMyTouches();
+	}
+
+	const Array<TouchInfo>& getTouches() const
+	{
+		return m_touches;
+	}
+
+	const Array<TouchInfo>& getPreTouches() const
+	{
+		return m_preTouches;
+	}
+
+	operator bool() const
+	{
+		return bool(m_touches);
+	}
+
+	Optional<TouchInfo> getTouch(int32 id) const
+	{
+		for (const auto& touch : m_touches)
+		{
+			if (touch.id == id)
+			{
+				return touch;
+			}
+		}
+		return none;
+	}
+
+	TouchInfo lastTouch() const
+	{
+		if (m_touches.isEmpty())
+		{
+			throw Error(U"lastTouch() called when no touches are available.");
+		}
+		else
+		{
+			return m_touches.back();
+		}
+	}
+};
+
+TouchesType Touches;
+
+# if SIV3D_PLATFORM(WEB)
+EM_JS(void, setupMultiTouchHandler, (), {
+	// グローバル変数を定義
+	window.myTouches = [];
+
+// タッチイベントの処理を設定
+const canvas = Module['canvas'];
+
+function updateTouches(e) {
+  window.myTouches = Array.from(e.touches);
+  //e.preventDefault(); // 任意：スクロール防止など
+}
+
+canvas.addEventListener("touchstart", updateTouches, false);
+canvas.addEventListener("touchmove", updateTouches, false);
+canvas.addEventListener("touchend", updateTouches, false);
+	});
+
+# endif
+
 void drawLoadingSpinner(const Vec2 center = Scene::Center(), double t = Scene::Time()) {
 	//ローディング画面
 	int32 t_ = static_cast<int32>(Floor(fmod(t / 0.1, 8)));
@@ -174,6 +286,7 @@ namespace EventCode {
 		startGame,
 		changePlayerState,
 		finishGame,
+		players,
 	};
 }
 
@@ -188,6 +301,7 @@ public:
 		RegisterEventCallback(EventCode::startGame, &MyClient::eventReceived_startGame);
 		RegisterEventCallback(EventCode::changePlayerState, &MyClient::eventReceived_changePlayerState);
 		RegisterEventCallback(EventCode::finishGame, &MyClient::eventReceived_finishGame);
+		RegisterEventCallback(EventCode::players, &MyClient::eventReceived_players);
 
 	}
 
@@ -220,6 +334,13 @@ public:
 		//ゲーム終了
 		if (not shareGameData) return;
 		sendEvent({ EventCode::finishGame ,ReceiverOption::All }, wonPlayer);
+	}
+
+	void sendPlayers()
+	{
+		//プレイヤーのデータを送信する
+		if (not shareGameData) return;
+		sendEvent({ EventCode::players, ReceiverOption::All }, shareGameData->players);
 	}
 
 private:
@@ -260,6 +381,12 @@ private:
 		shareGameData->gameState = GameState::Finished;
 	}
 
+	void eventReceived_players([[maybe_unused]] LocalPlayerID playerID, const std::array<PlayerData, 2>& players)
+	{
+		if (not shareGameData) return;
+		shareGameData->players = players;
+	}
+
 
 	void joinRoomEventAction(const LocalPlayer& newPlayer, [[maybe_unused]] const Array<LocalPlayerID>& playerIDs, bool isSelf) override
 	{
@@ -282,6 +409,13 @@ private:
 
 void Main()
 {
+
+# if SIV3D_PLATFORM(WEB)
+	setupMultiTouchHandler();
+# endif
+
+
+
 	MyClient client;
 
 	Font font(30);
@@ -313,6 +447,12 @@ void Main()
 
 	while (System::Update())
 	{
+		Touches.update();
+
+		for (const auto& touch : Touches.getTouches())
+		{
+			Print << U"Touch ID: " << touch.id << U" Position: " << touch.pos;
+		}
 
 		if (client.isActive())
 		{
@@ -372,17 +512,34 @@ void Main()
 
 					if (client.timer.reachedZero()) {
 						PlayerState changeState = PlayerState::Charge;
-						if (MouseL.pressed()) {
-							if (attackButton.mouseOver()) {
+
+						if (Touches) {
+							Vec2 touch_pos = Touches.lastTouch().pos;
+							if (attackButton.intersects(touch_pos)) {
 								changeState = PlayerState::Attack;
 							}
-							else if (defenseButton.mouseOver()) {
+							else if (defenseButton.intersects(touch_pos)) {
 								changeState = PlayerState::Defense;
+							}
+						}
+						else {
+
+							if (MouseL.pressed()) {
+								if (attackButton.intersects(Cursor::PosF())) {
+									changeState = PlayerState::Attack;
+								}
+								else if (defenseButton.intersects(Cursor::PosF())) {
+									changeState = PlayerState::Defense;
+								}
 							}
 						}
 
 						if (changeState != player.state) {
 							client.changeState(changeState);
+							if (client.isHost()) {
+								client.shareGameData->players[client.myPlayerIndex].state = changeState;
+								client.sendPlayers();
+							}
 						}
 					}
 
