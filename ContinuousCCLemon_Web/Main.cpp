@@ -193,7 +193,7 @@ public:
 		for (auto [i, player] : IndexedRef(players)) {
 			if (player.state == PlayerState::Charge) {
 				auto& enemy = players[1 - i];
-				if (enemy.state != PlayerState::Attack) {
+				if (enemy.state != PlayerState::Attack or (pre_players[1 - i].chargePoint <= 0)) {
 					player.chargePoint += 10 * dt; //タメポイントを増加
 				}
 			}
@@ -291,7 +291,7 @@ namespace EventCode {
 	};
 }
 
-String VERSION = U"1.1";
+String VERSION = U"1.2";
 
 class MyClient : public Multiplayer_Photon
 {
@@ -471,6 +471,7 @@ void Main()
 	{
 		Touches.update();
 
+
 		/*
 		for (const auto& touch : Touches.getTouches())
 		{
@@ -552,6 +553,21 @@ void Main()
 							}
 						}
 						else {
+							if (KeySpace.pressed() and KeyShift.pressed()) {
+								changeState = player.state;
+								if (KeySpace.down()) {
+									changeState = PlayerState::Attack;
+								}
+								if (KeyShift.down()) {
+									changeState = PlayerState::Defense;
+								}
+							}
+							else if (KeySpace.pressed()) {
+								changeState = PlayerState::Attack;
+							}
+							else if (KeyShift.pressed()) {
+								changeState = PlayerState::Defense;
+							}
 
 							if (MouseL.pressed()) {
 								if (attackButton.intersects(Cursor::PosF())) {
