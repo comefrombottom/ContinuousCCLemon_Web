@@ -14,6 +14,41 @@
 相手のhpを削り切るか、タメポイントを一定量集めると打てる必殺技で勝利
 */
 
+class InputManageFlag {
+public:
+	InputManageFlag() noexcept : m_prePressed(false), m_pressed(false), m_duration(0) {}
+
+	void update(bool currentPressed) noexcept {
+		m_prePressed = m_pressed;
+		m_pressed = currentPressed;
+
+		if (down()) {
+			m_stopwatch.restart();
+		}
+		m_duration = pressed() or up() ? m_stopwatch.elapsed() : 0s;
+	}
+
+	[[nodiscard]] constexpr bool down() const noexcept {
+		return m_pressed && !m_prePressed;
+	}
+
+	[[nodiscard]] constexpr bool pressed() const noexcept {
+		return m_pressed;
+	}
+
+	[[nodiscard]] constexpr bool up() const noexcept {
+		return !m_pressed && m_prePressed;
+	}
+
+	[[nodiscard]] constexpr Duration pressedDuration() const noexcept {
+		return m_duration;
+	}
+private:
+	bool m_prePressed;
+	bool m_pressed;
+	Stopwatch m_stopwatch;
+	Duration m_duration;
+};
 
 struct TouchInfo {
 	int32 id;
@@ -101,6 +136,20 @@ public:
 		{
 			return m_touches.back();
 		}
+	}
+
+	template<class T>
+	TouchesType intersects(T&& shape) const
+	{
+		TouchesType result;
+		for (const auto& touch : m_touches)
+		{
+			if (shape.intersects(touch.pos))
+			{
+				result.m_touches.push_back(touch);
+			}
+		}
+		return result;
 	}
 };
 
@@ -291,7 +340,7 @@ namespace EventCode {
 	};
 }
 
-String VERSION = U"1.2";
+String VERSION = U"1.3";
 
 class MyClient : public Multiplayer_Photon
 {
@@ -451,9 +500,12 @@ void Main()
 	Circle enemyStateCircle(250, 150, 80);
 
 	RectF hpBarRect(Arg::bottomCenter(250, 500), 450, 30);
-	RectF attackButton(250, 500, 250, 250);
-	RectF defenseButton(250 - 250, 500, 250, 250);
+	RectF attackButtonRect(250, 500, 250, 250);
+	RectF defenseButtonRect(250 - 250, 500, 250, 250);
 	Circle chargeCircle(250, 670, 100);
+
+	InputManageFlag attackInputFlag;
+	InputManageFlag defenseInputFlag;
 
 	double timeAccum = 0;
 	constexpr double timeStep = 1.0 / 60;
@@ -467,10 +519,24 @@ void Main()
 	Texture shieldIcon(0xF0499_icon, 100);
 	Texture chargeIcon(0xF00E8_icon, 100);
 
+	int32 lastKey = 0;
+
+	bool touches_enabled = false;
+
 	while (System::Update())
 	{
 		Touches.update();
 
+		if (Touches) {
+			touches_enabled = true;
+		}
+
+		/*if (KeySpace.down()) {
+			lastKey = 0;
+		}
+		else if (KeyShift.down()) {
+			lastKey = 1;
+		}*/
 
 		/*
 		for (const auto& touch : Touches.getTouches())
@@ -541,43 +607,83 @@ void Main()
 					}
 
 					if (client.timer.reachedZero()) {
-						PlayerState changeState = PlayerState::Charge;
 
-						if (Touches) {
-							Vec2 touch_pos = Touches.lastTouch().pos;
-							if (attackButton.intersects(touch_pos)) {
-								changeState = PlayerState::Attack;
-							}
-							else if (defenseButton.intersects(touch_pos)) {
-								changeState = PlayerState::Defense;
-							}
+						if (touches_enabled) {
+							attackInputFlag.update(Touches.intersects(attackButtonRect));
+							defenseInputFlag.update(Touches.intersects(defenseButtonRect));
 						}
 						else {
-							if (KeySpace.pressed() and KeyShift.pressed()) {
-								changeState = player.state;
-								if (KeySpace.down()) {
-									changeState = PlayerState::Attack;
-								}
-								if (KeyShift.down()) {
-									changeState = PlayerState::Defense;
-								}
+							bool attack_on = false;
+							bool defense_on = false;
+							attack_on |= KeySpace.pressed();
+							defense_on |= KeyShift.pressed();
+							if (MouseL.pressed()) {
+								attack_on |= attackButtonRect.intersects(Cursor::PosF());
+								defense_on |= defenseButtonRect.intersects(Cursor::PosF());
 							}
-							else if (KeySpace.pressed()) {
+							attackInputFlag.update(attack_on);
+							defenseInputFlag.update(defense_on);
+						}
+
+						if (attackInputFlag.down()) {
+							lastKey = 0;
+						}
+						else if (defenseInputFlag.down()) {
+							lastKey = 1;
+						}
+
+
+						PlayerState changeState = PlayerState::Charge;
+
+						if (attackInputFlag.pressed() and defenseInputFlag.pressed()) {
+							if (lastKey == 0) {
 								changeState = PlayerState::Attack;
 							}
-							else if (KeyShift.pressed()) {
+							else {
 								changeState = PlayerState::Defense;
 							}
-
-							if (MouseL.pressed()) {
-								if (attackButton.intersects(Cursor::PosF())) {
-									changeState = PlayerState::Attack;
-								}
-								else if (defenseButton.intersects(Cursor::PosF())) {
-									changeState = PlayerState::Defense;
-								}
-							}
 						}
+						else if (attackInputFlag.pressed()) {
+							changeState = PlayerState::Attack;
+						}
+						else if (defenseInputFlag.pressed()) {
+							changeState = PlayerState::Defense;
+						}
+
+						//if (Touches) {
+						//	Vec2 touch_pos = Touches.lastTouch().pos;
+						//	if (attackButtonRect.intersects(touch_pos)) {
+						//		changeState = PlayerState::Attack;
+						//	}
+						//	else if (defenseButtonRect.intersects(touch_pos)) {
+						//		changeState = PlayerState::Defense;
+						//	}
+						//}
+						//else {
+						//	if (KeySpace.pressed() and KeyShift.pressed()) {
+						//		if (lastKey == 0) {
+						//			changeState = PlayerState::Attack;
+						//		}
+						//		else {
+						//			changeState = PlayerState::Defense;
+						//		}
+						//	}
+						//	else if (KeySpace.pressed()) {
+						//		changeState = PlayerState::Attack;
+						//	}
+						//	else if (KeyShift.pressed()) {
+						//		changeState = PlayerState::Defense;
+						//	}
+
+						//	if (MouseL.pressed()) {
+						//		if (attackButtonRect.intersects(Cursor::PosF())) {
+						//			changeState = PlayerState::Attack;
+						//		}
+						//		else if (defenseButtonRect.intersects(Cursor::PosF())) {
+						//			changeState = PlayerState::Defense;
+						//		}
+						//	}
+						//}
 
 						if (changeState != player.state) {
 							client.changeState(changeState);
@@ -610,15 +716,15 @@ void Main()
 					RectF enemyHpBarRect2(enemyHpBarRect.pos, enemyHpBarRect.w * (enemy.hp / client.shareGameData->maxHp), enemyHpBarRect.h);
 					enemyHpBarRect2.draw(Palette::Lime);
 
-					attackButton.draw(Palette::Red);
-					swordIcon.drawAt(attackButton.center() + Vec2(50, 0), Palette::White);
+					attackButtonRect.draw(Palette::Red);
+					swordIcon.drawAt(attackButtonRect.center() + Vec2(50, 0), Palette::White);
 					if (player.state == PlayerState::Attack) {
-						attackButton.draw(ColorF(1, 0.5));
+						attackButtonRect.draw(ColorF(1, 0.5));
 					}
-					defenseButton.draw(Palette::Blue);
-					shieldIcon.drawAt(defenseButton.center() - Vec2(50, 0), Palette::White);
+					defenseButtonRect.draw(Palette::Blue);
+					shieldIcon.drawAt(defenseButtonRect.center() - Vec2(50, 0), Palette::White);
 					if (player.state == PlayerState::Defense) {
-						defenseButton.draw(ColorF(1, 0.5));
+						defenseButtonRect.draw(ColorF(1, 0.5));
 					}
 					chargeCircle.stretched(10).draw(Palette::Black);
 					chargeCircle.draw(Palette::Green);
@@ -644,7 +750,7 @@ void Main()
 				}
 				else if (client.shareGameData->gameState == GameState::Finished) {
 					//終了
-					font(U"GameState: Finished").drawAt(Scene::CenterF().moveBy(0, -100), Palette::White);
+					//font(U"GameState: Finished").drawAt(Scene::CenterF().moveBy(0, -100), Palette::White);
 					if (client.shareGameData->wonPlayer == client.myPlayerIndex) {
 						font(U"You Win!").drawAt(Scene::CenterF().moveBy(0, 0), Palette::White);
 					}
