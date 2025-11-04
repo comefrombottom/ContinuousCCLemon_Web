@@ -173,6 +173,18 @@ canvas.addEventListener("touchmove", updateTouches, false);
 canvas.addEventListener("touchend", updateTouches, false);
 	});
 
+EM_JS(void, setupBackspaceFix, (), {
+	window.addEventListener('keydown', function(e) {
+		// Canvas がフォーカスされているときのみ対象
+		const canvas = Module['canvas'];
+
+		if (document.activeElement === canvas && e.key === 'Backspace') {
+			e.preventDefault();  // ← ブラウザの「戻る」挙動を止める
+		}
+	  }, true);
+	});
+
+
 # endif
 
 void drawLoadingSpinner(const Vec2 center = Scene::Center(), double t = Scene::Time()) {
@@ -340,7 +352,7 @@ namespace EventCode {
 	};
 }
 
-String VERSION = U"1.3";
+String VERSION = U"1.4";
 
 class MyClient : public Multiplayer_Photon
 {
@@ -366,6 +378,8 @@ public:
 	String enemyPlayerName;
 
 	Timer timer{ 3s };
+
+	Array<RoomInfo> cachedRoomList;
 
 	void startGame(double maxHp, double maxChargePoint)
 	{
@@ -476,6 +490,11 @@ private:
 	void leaveRoomReturn(int32 errorCode, const String& errorString) {
 		enemyPlayerName = U"";
 	}
+
+	void onRoomListUpdate() override
+	{
+		cachedRoomList = getRoomList();
+	}
 };
 
 void Main()
@@ -483,13 +502,15 @@ void Main()
 
 # if SIV3D_PLATFORM(WEB)
 	setupMultiTouchHandler();
+	setupBackspaceFix();
 # endif
 
 
 
 	MyClient client;
 
-	Font font(30);
+	Font font(FontMethod::MSDF, 30);
+
 
 	Window::Resize(500, 800);
 
@@ -525,6 +546,8 @@ void Main()
 
 	while (System::Update())
 	{
+		ClearPrint();
+
 		Touches.update();
 
 		if (Touches) {
@@ -559,10 +582,15 @@ void Main()
 
 			font(U"v{}"_fmt(VERSION)).draw(20, Vec2{ 5, 5 });
 
-			font(U"Name:").drawAt(Scene::CenterF().moveBy(-150, -100), Palette::White);
-			SimpleGUI::TextBoxAt(playerNameEditState, Scene::CenterF().moveBy(0, -100));
+			// 注意書き
+#if SIV3D_PLATFORM(WEB)
+			font(U"スマホの場合キーボード入力でのBackSpaceが利きません").draw(15, Arg::bottomRight(Scene::Rect().rightCenter().moveBy(-10, -350)), Palette::White);
+#endif
 
-			RoundRect backSpaceButton(Arg::center(Scene::CenterF().moveBy(130, -100)), 50, 30, 5);
+			font(U"Name:").drawAt(Scene::CenterF().moveBy(-150, -300), Palette::White);
+			SimpleGUI::TextBoxAt(playerNameEditState, Scene::CenterF().moveBy(0, -300));
+
+			RoundRect backSpaceButton(Arg::center(Scene::CenterF().moveBy(130, -300)), 50, 30, 5);
 			backSpaceButton.draw(backSpaceButton.leftPressed() ? ColorF(0.9) : ColorF(1));
 			backSpaceButton.drawFrame(2, Palette::Gray);
 			backSpaceIcon.drawAt(backSpaceButton.center(), Palette::Lightsteelblue);
@@ -573,13 +601,35 @@ void Main()
 				}
 			}
 
-
-			if (SimpleGUI::ButtonAt(U"ランダムマッチ", Scene::Center(), 300))
+			// 部屋作成
+			if (SimpleGUI::ButtonAt(U"部屋作成", Scene::Center().moveBy(0, -200), 300))
 			{
-				//適当な部屋に入るか、部屋がなければ新規作成する。空文字列を指定するとランダムな部屋名になる。
 				client.myPlayerName = playerNameEditState.text;
-				client.joinRandomOrCreateRoom(U"", RoomCreateOption().maxPlayers(2));
+				client.createRoom(U"Room#{}"_fmt(ToHex(RandomInt16())), RoomCreateOption().maxPlayers(2));
+			}
 
+
+			//if (SimpleGUI::ButtonAt(U"ランダムマッチ", Scene::Center().moveBy(0, 50), 300))
+			//{
+			//	//適当な部屋に入るか、部屋がなければ新規作成する。空文字列を指定するとランダムな部屋名になる。
+			//	client.myPlayerName = playerNameEditState.text;
+			//	client.joinRandomOrCreateRoom(U"Room#{}"_fmt(ToHex(RandomInt16())), RoomCreateOption().maxPlayers(2));
+
+			//}
+
+			//ルームリストの表示
+
+			font(U"部屋一覧:").draw(Vec2(50, Scene::Center().y + 25 - 200), Palette::White);
+			for (const auto [i, roomInfo] : Indexed(client.cachedRoomList)) {
+
+				if (roomInfo.playerCount >= roomInfo.maxPlayers) {
+					continue;
+				}
+
+				if (SimpleGUI::ButtonAt(roomInfo.name, Scene::CenterF().movedBy(0, static_cast<double>(i) * 50 - 100), 300, 50)) {
+					client.myPlayerName = playerNameEditState.text;
+					client.joinRoom(roomInfo.name);
+				}
 			}
 
 
@@ -712,6 +762,8 @@ void Main()
 						shieldIcon.drawAt(enemyStateCircle.center, Palette::White);
 					}
 
+
+
 					enemyHpBarRect.draw(Palette::Black);
 					RectF enemyHpBarRect2(enemyHpBarRect.pos, enemyHpBarRect.w * (enemy.hp / client.shareGameData->maxHp), enemyHpBarRect.h);
 					enemyHpBarRect2.draw(Palette::Lime);
@@ -736,6 +788,8 @@ void Main()
 					hpBarRect.draw(Palette::Black);
 					RectF hpBarRect2(hpBarRect.pos, hpBarRect.w * (player.hp / client.shareGameData->maxHp), hpBarRect.h);
 					hpBarRect2.draw(Palette::Lime);
+
+
 
 					//敵の名前を表示
 					font(client.enemyPlayerName).draw(20, Vec2{ 5,5 }, Palette::White);
@@ -800,6 +854,9 @@ void Main()
 				{
 					client.leaveRoom();
 				}
+
+				// ルーム名の表示
+				font(U"{}"_fmt(client.getCurrentRoomName())).draw(20, Vec2{ 200,20 }, Palette::White);
 			}
 		}
 
