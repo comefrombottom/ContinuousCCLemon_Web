@@ -178,7 +178,7 @@ EM_JS(void, setupBackspaceFix, (), {
 		// Canvas がフォーカスされているときのみ対象
 		const canvas = Module['canvas'];
 
-		if (document.activeElement === canvas && e.key === 'Backspace') {
+		if (e.key === 'Backspace') {
 			e.preventDefault();  // ← ブラウザの「戻る」挙動を止める
 		}
 	  }, true);
