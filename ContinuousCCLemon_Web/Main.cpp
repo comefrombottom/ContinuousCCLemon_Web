@@ -173,17 +173,6 @@ canvas.addEventListener("touchmove", updateTouches, false);
 canvas.addEventListener("touchend", updateTouches, false);
 	});
 
-EM_JS(void, setupBackspaceFix, (), {
-	window.addEventListener('keydown', function(e) {
-		// Canvas がフォーカスされているときのみ対象
-		const canvas = Module['canvas'];
-
-		if (e.key === 'Backspace') {
-			e.preventDefault();  // ← ブラウザの「戻る」挙動を止める
-		}
-	  }, true);
-	});
-
 
 # endif
 
@@ -502,7 +491,33 @@ void Main()
 
 # if SIV3D_PLATFORM(WEB)
 	setupMultiTouchHandler();
-	setupBackspaceFix();
+
+	EM_ASM({
+		let keyDownEvent = null;
+		let timeoutId = null;
+
+		addEventListener("keydown", function(event) {
+			if (!event.isTrusted) {
+				return;
+			}
+			keyDownEvent = event;
+		});
+
+		addEventListener("keyup", function(event) {
+			if (!event.isTrusted) {
+				return;
+			}
+			const keyUpEvent = event;
+			if (keyDownEvent.timeStamp == keyUpEvent.timeStamp) {
+				clearTimeout(timeoutId);
+				dispatchEvent(keyDownEvent);
+				timeoutId = setTimeout(function() {
+					dispatchEvent(keyUpEvent);
+					timeoutId = null;
+				}, 100);
+			}
+		});
+		});
 # endif
 
 
@@ -514,7 +529,33 @@ void Main()
 
 	Window::Resize(500, 800);
 
-	TextEditState playerNameEditState{ U"通りすがりの勇者" };
+	const Array<StringView> random_name_prefixes{
+		U"通りすがりの",
+		U"名無しの",
+		U"無名の",
+		U"勇敢な",
+		U"伝説の",
+		U"無敵の",
+		U"孤高の",
+		U"疾風の",
+		U"不死身の",
+		U"最強の",
+	};
+
+	const Array<StringView> random_name_suffixes{
+		U"勇者",
+		U"戦士",
+		U"剣士",
+		U"魔法使い",
+		U"盗賊",
+		U"騎士",
+		U"狩人",
+		U"侍",
+		U"忍者",
+		U"冒険者",
+	};
+
+	TextEditState playerNameEditState{ random_name_prefixes[Random(0, 9)] + random_name_suffixes[Random(0, 9)] };
 
 	RectF enemyHpBarRect(Arg::bottomCenter(250, 300), 350, 30);
 
